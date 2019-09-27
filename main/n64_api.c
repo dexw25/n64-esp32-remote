@@ -26,111 +26,65 @@ rmt_item32_t pollcmd[] = {
 static con_state state;
 
 // Parse up to 42 items
-uint32_t n64_parse_resp(rmt_item32_t *item, size_t num_items, con_state *con){
-	uint32_t ret = 0;
-
+void n64_parse_resp(rmt_item32_t *item, size_t num_items, con_state *con){
+	// Do not update state if we don't have enough packets
 	if (num_items < 42){
-		return 0;
+		return;
 	}
 
-	for (int i=0; i < 9; i++) item++; // skip cmd
+	for (int i=0; i < 9; i++) item++; // seek cmd and cmd stop bit
 
 	// parse digital inputs
 	for (int i = 0; i < 16; i++){
 		bool on = (item++)->duration0 < 100 ? true : false;
 		switch (i) {
 				case CON_A:
-					if (on != con->a) {
-						con->a = on;
-						ESP_LOGI(TAG, "a state changed");
-					} 
+					con->a = on;
 					break;
 				case CON_B:
-					if (on != con->b) {
-						con->b = on;
-						ESP_LOGI(TAG, "b state changed");
-					} 
+					con->b = on;
 					break;
 				case CON_Z:
-					if (on != state.z) {
-						con->z = on;
-						ESP_LOGI(TAG, "z state changed");
-					} 
+					con->z = on;
 					break;
 				case CON_START:
-					if (on != state.start) {
-						con->start = on;
-						ESP_LOGI(TAG, "start state changed");
-						if (con->start){
-							gpio_set_level(13, 1);
-						} else {
-							gpio_set_level(13, 0);
-						}
-					} 
+					con->start = on;
 					break;
 				case CON_DU:
-					if (on != state.d_up) {
-						con->d_up = on;
-						ESP_LOGI(TAG, "d_up state changed");
-					} 
+					con->d_up = on;
 					break;
 				case CON_DD:
-					if (on != state.d_down) {
-						con->d_down = on;
-						ESP_LOGI(TAG, "d_down state changed");
-					} 
+					con->d_down = on;
 					break;
 				case CON_DL:
-					if (on != state.d_left) {
-						con->d_left = on;
-						ESP_LOGI(TAG, "d_left state changed");
-					} 
+					con ->d_left = on;
 					break;
 				case CON_DR:
-					if (on != state.d_left) {
-						con->d_left = on;
-						ESP_LOGI(TAG, "d_left state changed");
-					} 
+					con->d_right = on;
 					break;
-				case CON_RES0:
+				case CON_RESET:
+					con->reset = on;
 					break;
-				case CON_RES1:
+				case CON_RESERVED:
+					con->reserved = on;
 					break;
 				case CON_L:
-					if (on != state.l) {
-						con->l = on;
-						ESP_LOGI(TAG, "l state changed");
-					} 
+					con->l = on;
 					break;
 				case CON_R:
-					if (on != state.r) {
-						con->r = on;
-						ESP_LOGI(TAG, "r state changed");
-					} 
+					con->r = on;
 					break;
 				case CON_CU:
-					if (on != state.c_up) {
-						con->c_up = on;
-						ESP_LOGI(TAG, "c_up state changed");
-					} 
+					con->c_up = on;
 					break;
 				case CON_CD:
-					if (on != state.c_down) {
-						con->c_down = on;
-						ESP_LOGI(TAG, "c_down state changed");
-					} 
+					con->c_down = on; 
 					break;
 				case CON_CL:
-					if (on != state.c_left) {
-						con->c_left = on;
-						ESP_LOGI(TAG, "c_left state changed");
-					} 
+					con->c_left = on;
 					break;
 				case CON_CR:
-					if (on != state.c_right) {
-						con->c_right = on;
-						ESP_LOGI(TAG, "c_right state changed");
-					} 
+					con->c_right = on;
 					break;
 				default:
 					break;
@@ -138,7 +92,6 @@ uint32_t n64_parse_resp(rmt_item32_t *item, size_t num_items, con_state *con){
 
 		// TODO: Handle joystick axes
 	}
-	return ret;
 }
 
 void con_poll(void *pvParameters){

@@ -7,24 +7,26 @@
 // Config defines
 #define N64_GPIO 21
 
-// Definition of data structure to hold n64 controller state
+// Definition of data structure to hold n64 controller state (specify bitfields)
 typedef struct {
-	bool a;
-	bool b;
-	bool z;
-	bool start;
-	bool d_up;
-	bool d_down;
-	bool d_left;
-	bool d_right;
-	bool l;
-	bool r;
-	bool c_up;
-	bool c_down;
-	bool c_left;
-	bool c_right;
-	int8_t joy_x;
-	int8_t joy_y;
+	bool a : 1;
+	bool b : 1;
+	bool z : 1;
+	bool start : 1;
+	bool d_up : 1;
+	bool d_down : 1;
+	bool d_left : 1;
+	bool d_right : 1;
+	bool reset : 1;
+	bool reserved : 1;
+	bool l : 1;
+	bool r : 1;
+	bool c_up : 1;
+	bool c_down : 1;
+	bool c_left : 1;
+	bool c_right : 1;
+	int8_t joy_x : 8;
+	int8_t joy_y : 8;
 } con_state;
 
 
@@ -37,8 +39,8 @@ typedef enum {
 	CON_DD,
 	CON_DL,
 	CON_DR,
-	CON_RES0,
-	CON_RES1,
+	CON_RESET,
+	CON_RESERVED,
 	CON_L,
 	CON_R,
 	CON_CU,
