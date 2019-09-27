@@ -27,7 +27,9 @@ static con_state state;
 
 // Parse up to 42 items
 void n64_parse_resp(rmt_item32_t *item, size_t num_items, con_state *con){
-	// Do not update state if we don't have enough packets
+	rmt_item32_t *first_item = item;
+
+	// Do not update state if we don't have enough packets. This also blocks buffer overflow
 	if (num_items < 42){
 		return;
 	}
@@ -89,9 +91,23 @@ void n64_parse_resp(rmt_item32_t *item, size_t num_items, con_state *con){
 				default:
 					break;
 		}
-
-		// TODO: Handle joystick axes
 	}
+
+	// Parse analog axes as 8 bit signed ints, MSB first
+	con->joy_x = 0;
+	for (int i=7; i >= 0; i--) {
+		if (item->duration0 < 100) con->joy_x |= 1 << i;
+		item++;
+	}
+	con->joy_y = 0;
+	for (int i=7; i >= 0; i--) {
+		if (item->duration0 < 100) con->joy_y |= 1 << i;
+		item++;
+	}
+
+	// Assert no buffer overflow condition occurred
+	assert((item - first_item) <= num_items);
+
 }
 
 void con_poll(void *pvParameters){
@@ -175,10 +191,5 @@ void con_poll(void *pvParameters){
 		// Ensure 60hz(ish) period
 		vTaskDelayUntil(&last_wake_time, poll_period);
 	}
-	// Send 0x00
-
-	// RX controller state
-
 	// send state (maybe just state changes?) to MQTT(?) endpoint (or print to serial debug for now)
-	//end while
 }
