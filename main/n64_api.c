@@ -147,7 +147,7 @@ void con_poll(void *pvParameters){
 	size_t rx_item_size;
 
 	// Timing params for poll loop
-	TickType_t last_wake_time = xTaskGetTickCount();
+	TickType_t now, last_wake_time = xTaskGetTickCount();
 	// 60hz-ish
 	const TickType_t poll_period = (1000/60) / portTICK_PERIOD_MS;
 
@@ -189,22 +189,17 @@ void con_poll(void *pvParameters){
 
 	ESP_ERROR_CHECK(rmt_get_ringbuf_handle(rxconf.channel, &rx_ring));
 
-	//Clear controller state
+	// Start RX, never stops as long as this task is running
+	ESP_ERROR_CHECK(rmt_rx_start(rxconf.channel, true));
 
-	//while(60 times per second)
 	while(1){
-		// TODO: Check if we overrun 60hz period and throw exception if so
+		// Send pollcmd, no delay needed for TX finish
+		rmt_write_items(txconf.channel, pollcmd, sizeof pollcmd / sizeof pollcmd[0], false);
 
-		// Rx first. We will get the tx in the buffer but this is fine
-		ESP_ERROR_CHECK(rmt_rx_start(rxconf.channel, true));
-
-		// Send pollcmd and wait for finish
-		rmt_write_items(txconf.channel, pollcmd, sizeof pollcmd / sizeof pollcmd[0], true);
-
-		// Wait a couple milliseconds for rx
-		// vTaskDelay(1 / portTICK_PERIOD_MS);
-
-		rx_item = xRingbufferReceive(rx_ring, &rx_item_size, pdMS_TO_TICKS(1));
+		// Controller response will be concatenated with our command if present
+		//  No delay here, write_items starts TX fast enough that the ring buffer is locked by rx before this call
+		//  
+		rx_item = xRingbufferReceive(rx_ring, &rx_item_size, 0);
 
 		// If no items rx'ed do not attempt to parse anything
 		if (rx_item){
@@ -215,6 +210,13 @@ void con_poll(void *pvParameters){
 				n64_parse_resp(rx_item, rx_item_size / sizeof *rx_item, &state);
 			}
 			vRingbufferReturnItem(rx_ring, rx_item);
+		}
+
+		// Check timing against last wake time, and error if we overran the period
+		now = xTaskGetTickCount();
+		if ((now - last_wake_time) > poll_period){
+			// Overran our schedule, update last_wake_time to now, otherwise the next poll happens immediately and the controller may not like that
+			last_wake_time = now;
 		}
 
 		// Ensure 60hz(ish) period
