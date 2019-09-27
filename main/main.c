@@ -11,11 +11,24 @@
 #include "freertos/task.h"
 #include "driver/gpio.h"
 #include "sdkconfig.h"
+#include "n64_api.h"
 
 /* Can use project configuration menu (idf.py menuconfig) to choose the GPIO to blink,
    or you can edit the following line and set a number here.
 */
 #define BLINK_GPIO CONFIG_BLINK_GPIO
+
+// Flash LED so that we know  the system is on (swap this for activity LED later)
+void heartbeat_task(void *params){
+      while(1) {
+        /* Blink off (output low) */
+        gpio_set_level(BLINK_GPIO, 0);
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
+        /* Blink on (output high) */
+        gpio_set_level(BLINK_GPIO, 1);
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
+    }
+}
 
 void app_main(void)
 {
@@ -28,14 +41,27 @@ void app_main(void)
     gpio_pad_select_gpio(BLINK_GPIO);
     /* Set the GPIO as a push/pull output */
     gpio_set_direction(BLINK_GPIO, GPIO_MODE_OUTPUT);
-    while(1) {
-        /* Blink off (output low) */
-	printf("Turning off the LED\n");
-        gpio_set_level(BLINK_GPIO, 0);
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
-        /* Blink on (output high) */
-	printf("Turning on the LED\n");
-        gpio_set_level(BLINK_GPIO, 1);
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
+
+    // start heartbeat task at low priority
+    xTaskCreate(
+        heartbeat_task,
+        "heartbeat_task",
+        1024,
+        NULL, // no params
+        tskIDLE_PRIORITY,
+        NULL); // Do not save task handle//*/
+
+    // start controller poll task
+    xTaskCreate(
+        con_poll,
+        "controller_poll",
+        4096,
+        NULL, // no params
+        1,
+        NULL); // Do not save task handle//*/
+
+    // Suspend main task
+    while(1){
+      vTaskDelay(portMAX_DELAY);
     }
 }
