@@ -1,0 +1,34 @@
+{
+	"folders":
+	[
+		{
+			"path": ".",
+			"folder_exclude_patterns": [".cquery_cache", "__pycache__"],
+		}
+	],
+	"build_systems":
+	[
+		{
+			"name": "build",
+			"linux": {
+				"cmd": ["python2", "$project_path/.esp-idf/tools/idf.py", "--ccache", "build"],
+			},
+			"windows": {
+				"shell_cmd": "C:\\Python27\\python.exe $project_path\\.esp-idf\\tools\\idf.py --ccache build"
+			},
+			"working_dir": "$project_path",
+			"file_regex": "^\\.\\.\/(\\S[^:]*):(\\d+):(\\d+):\\s+(.*)"
+		},
+		{
+			"name": "monitor",
+			"linux": {
+				"cmd": ["python2", "$project_path/.esp-idf/tools/idf.py", "--ccache", "flash", "monitor"],
+			},
+			"windows": {
+				"shell_cmd": "C:\\Python27\\python.exe $project_path\\.esp-idf\\tools\\idf.py --ccache flash monitor"
+			},
+			"working_dir": "$project_path",
+			"file_regex": "^\\.\\.\/(\\S[^:]*):(\\d+):(\\d+):\\s+(.*)"
+		}
+	]
+}
