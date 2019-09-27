@@ -149,8 +149,7 @@ void con_poll(void *pvParameters){
 	// Timing params for poll loop
 	TickType_t last_wake_time = xTaskGetTickCount();
 	// 60hz-ish
-	// const TickType_t poll_period = (1000/60) / portTICK_PERIOD_MS;
-	const TickType_t poll_period = (1000/15) / portTICK_PERIOD_MS; //DELETEME: slow this down to 15hz
+	const TickType_t poll_period = (1000/60) / portTICK_PERIOD_MS;
 
 	ESP_LOGI(TAG, "Starting controller driver init");
 
