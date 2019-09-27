@@ -21,8 +21,11 @@ rmt_item32_t pollcmd[] = {
 	ITEM_END
 };
 
+// Static controller state var
+static con_state state;
+
 // Parse up to 42 items
-uint32_t n64_parse_resp(rmt_item32_t *item, size_t num_items){
+uint32_t n64_parse_resp(rmt_item32_t *item, size_t num_items, con_state *con){
 	uint32_t ret = 0;
 
 	if (num_items < 42){
@@ -31,11 +34,108 @@ uint32_t n64_parse_resp(rmt_item32_t *item, size_t num_items){
 
 	for (int i=0; i < 9; i++) item++; // skip cmd
 
-	// Set bits to 1 for items that mean 1
-	for (int i = 31; i >= 0; i--){
-		if ((item++)->duration0 < 100){
-			ret |= 1 << i;
+	// parse digital inputs
+	for (int i = 0; i < 16; i++){
+		bool on = (item++)->duration0 < 100 ? true : false;
+		switch (i) {
+				case CON_A:
+					if (on != con->a) {
+						con->a = on;
+						ESP_LOGI(TAG, "a state changed");
+					} 
+					break;
+				case CON_B:
+					if (on != con->b) {
+						con->b = on;
+						ESP_LOGI(TAG, "b state changed");
+					} 
+					break;
+				case CON_Z:
+					if (on != state.z) {
+						con->z = on;
+						ESP_LOGI(TAG, "z state changed");
+					} 
+					break;
+				case CON_START:
+					if (on != state.start) {
+						con->start = on;
+						ESP_LOGI(TAG, "start state changed");
+						if (con->start){
+							gpio_set_level(13, 1);
+						} else {
+							gpio_set_level(13, 0);
+						}
+					} 
+					break;
+				case CON_DU:
+					if (on != state.d_up) {
+						con->d_up = on;
+						ESP_LOGI(TAG, "d_up state changed");
+					} 
+					break;
+				case CON_DD:
+					if (on != state.d_down) {
+						con->d_down = on;
+						ESP_LOGI(TAG, "d_down state changed");
+					} 
+					break;
+				case CON_DL:
+					if (on != state.d_left) {
+						con->d_left = on;
+						ESP_LOGI(TAG, "d_left state changed");
+					} 
+					break;
+				case CON_DR:
+					if (on != state.d_left) {
+						con->d_left = on;
+						ESP_LOGI(TAG, "d_left state changed");
+					} 
+					break;
+				case CON_RES0:
+					break;
+				case CON_RES1:
+					break;
+				case CON_L:
+					if (on != state.l) {
+						con->l = on;
+						ESP_LOGI(TAG, "l state changed");
+					} 
+					break;
+				case CON_R:
+					if (on != state.r) {
+						con->r = on;
+						ESP_LOGI(TAG, "r state changed");
+					} 
+					break;
+				case CON_CU:
+					if (on != state.c_up) {
+						con->c_up = on;
+						ESP_LOGI(TAG, "c_up state changed");
+					} 
+					break;
+				case CON_CD:
+					if (on != state.c_down) {
+						con->c_down = on;
+						ESP_LOGI(TAG, "c_down state changed");
+					} 
+					break;
+				case CON_CL:
+					if (on != state.c_left) {
+						con->c_left = on;
+						ESP_LOGI(TAG, "c_left state changed");
+					} 
+					break;
+				case CON_CR:
+					if (on != state.c_right) {
+						con->c_right = on;
+						ESP_LOGI(TAG, "c_right state changed");
+					} 
+					break;
+				default:
+					break;
 		}
+
+		// TODO: Handle joystick axes
 	}
 	return ret;
 }
@@ -93,8 +193,7 @@ void con_poll(void *pvParameters){
 
 	//while(60 times per second)
 	while(1){
-		// TODO: Check if we overrun 60hz period and throw exception if so		
-		uint32_t state;
+		// TODO: Check if we overrun 60hz period and throw exception if so
 
 		// Rx first. We will get the tx in the buffer but this is fine
 		ESP_ERROR_CHECK(rmt_rx_start(rxconf.channel, true));
@@ -113,8 +212,7 @@ void con_poll(void *pvParameters){
 			if (rx_item_size < 42){
 				ESP_LOGE(TAG, "got %d items, expected at least 42", rx_item_size / sizeof *rx_item);
 			} else {
-				state = n64_parse_resp(rx_item, rx_item_size / sizeof *rx_item);
-				ESP_LOGI(TAG, "Controller state: %08x", state);	
+				n64_parse_resp(rx_item, rx_item_size / sizeof *rx_item, &state);
 			}
 			vRingbufferReturnItem(rx_ring, rx_item);
 		}

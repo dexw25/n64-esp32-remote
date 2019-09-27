@@ -27,6 +27,26 @@ typedef struct {
 	int8_t joy_y;
 } con_state;
 
+
+typedef enum {
+	CON_A,
+	CON_B,
+	CON_Z,
+	CON_START,
+	CON_DU,
+	CON_DD,
+	CON_DL,
+	CON_DR,
+	CON_RES0,
+	CON_RES1,
+	CON_L,
+	CON_R,
+	CON_CU,
+	CON_CD,
+	CON_CL,
+	CON_CR
+} button_enums;
+
 // Macros to ease generation of RMT items
 // zero is 3us low, one us high, one is reverse (timing only, not level)
 #define ITEM_ONE {{{1, 0, 3, 1}}}
