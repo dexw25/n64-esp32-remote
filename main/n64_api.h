@@ -8,29 +8,32 @@
 #define N64_GPIO 21
 
 // Definition of data structure to hold n64 controller state (specify bitfields)
-typedef struct {
-	bool a : 1;
-	bool b : 1;
-	bool z : 1;
-	bool start : 1;
-	bool d_up : 1;
-	bool d_down : 1;
-	bool d_left : 1;
-	bool d_right : 1;
-	bool reset : 1;
-	bool reserved : 1;
-	bool l : 1;
-	bool r : 1;
-	bool c_up : 1;
-	bool c_down : 1;
-	bool c_left : 1;
-	bool c_right : 1;
-	int8_t joy_x : 8;
-	int8_t joy_y : 8;
+typedef union {
+	struct {
+		bool a : 1;
+		bool b : 1;
+		bool z : 1;
+		bool start : 1;
+		bool d_up : 1;
+		bool d_down : 1;
+		bool d_left : 1;
+		bool d_right : 1;
+		bool reset : 1;
+		bool reserved : 1;
+		bool l : 1;
+		bool r : 1;
+		bool c_up : 1;
+		bool c_down : 1;
+		bool c_left : 1;
+		bool c_right : 1;
+		int8_t joy_x : 8;
+		int8_t joy_y : 8;
+	};
+	uint32_t raw;
 } con_state;
 
 typedef struct {
-	con_state state;
+	uint32_t state;
 	int64_t ts;
 } state_packet;
 

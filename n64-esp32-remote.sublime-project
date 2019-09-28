@@ -12,12 +12,13 @@
 			"name": "build",
 			"linux": {
 				"cmd": ["python2", "$project_path/.esp-idf/tools/idf.py", "--ccache", "build"],
+				"file_regex": "^(/\\S[^:]*):(\\d+):(\\d+):\\s+(.*)"
 			},
 			"windows": {
-				"shell_cmd": "C:\\Python27\\python.exe $project_path\\.esp-idf\\tools\\idf.py --ccache build"
+				"shell_cmd": "C:\\Python27\\python.exe $project_path\\.esp-idf\\tools\\idf.py --ccache build",
+				"file_regex": "^\\.\\.\/(\\S[^:]*):(\\d+):(\\d+):\\s+(.*)"
 			},
-			"working_dir": "$project_path",
-			"file_regex": "^\\.\\.\/(\\S[^:]*):(\\d+):(\\d+):\\s+(.*)"
+			"working_dir": "$project_path"
 		},
 		{
 			"name": "monitor",
