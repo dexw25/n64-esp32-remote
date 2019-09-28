@@ -29,6 +29,75 @@ static con_state state;
 static bool controller_connected;
 static bool new_state;
 
+// Given one bit, set item to encode 1 or 0
+static inline void n64_set_item_val(rmt_item32_t *itemptr, bool val){
+	assert(itemptr);
+	if (val) {
+		itemptr->duration0 = 1;
+		itemptr->level0 = 0;
+		itemptr->duration1 = 3;
+		itemptr->level1 = 1;
+	} else {
+		itemptr->duration0 = 3;
+		itemptr->level0 = 0;
+		itemptr->duration1 = 1;
+		itemptr->level1 = 1;
+	}
+}
+
+// Fill item with stop code
+static inline void n64_set_item_stop(rmt_item32_t *itemptr){
+	assert(itemptr);
+	itemptr->duration0 = 1;
+	itemptr->level0 = 0;
+	itemptr->duration1 = 2;
+	itemptr->level1 = 1;
+}
+
+// Fill item with values to signal RMT to end transmission
+static inline void rmt_set_item_end(rmt_item32_t *itemptr){
+	assert(itemptr);
+	itemptr->duration0 = 0;
+	itemptr->level0 = 1;
+	itemptr->duration1 = 0;
+	itemptr->level1 = 0;
+}
+
+// Pack a byte buffer into RMT items suitable for sending
+static size_t n64_pack_buf(rmt_item32_t *itemptr, size_t max_items, uint8_t *buf, size_t num_bytes){
+	assert(itemptr);
+	// Save base for assertion below
+	rmt_item32_t *baseptr = itemptr;
+
+	// Save items written
+	size_t ret = 0;
+
+	// Write nothing if not given enough space
+	if ((num_bytes * 8 + 2) <= max_items){
+		// For each byte
+		for(int i = 0; i < num_bytes; i++) {
+			// For bit in byte (MSB first)
+			for (int j = 7; j >= 0; j--){
+				// One item per bit
+				n64_set_item_val(itemptr++, (buf[i] & (1 << j)) ? true : false);
+				ret++;
+			}
+		}
+
+		// Fill stop bit
+		n64_set_item_stop(itemptr++);
+		ret++;
+
+		// RMT end code
+		rmt_set_item_end(itemptr++);
+		ret++;
+
+		// Check code above, 8 bits per byte and 2 stop/end items should have been written
+		assert(itemptr - baseptr == num_bytes * 8 + 2);
+	}
+	return ret;
+}
+
 // Parse a controller status struct, 32 bits (any extras will be ignored)
 bool n64_parse_resp(rmt_item32_t *item, size_t num_items, con_state *con){
 	rmt_item32_t *first_item = item;
@@ -142,6 +211,23 @@ bool n64_parse_resp(rmt_item32_t *item, size_t num_items, con_state *con){
 	return new_state;
 }
 
+int parse_cmd(rmt_item32_t *item, size_t num_items){
+	rmt_item32_t *first_item = item;
+	if (num_items < 8){
+		// Malformed command, return error
+		return -1;
+	}
+	// Parse 8 bit unsigned int, MSB first
+	uint8_t ret = 0;
+	for (int i = 7; i >= 0; i--){
+		if ((item++)->duration0 < 100) ret |= 1 << i;
+	}
+
+	// Assert we did not access more than 8 items
+	assert((item - first_item) <= 8);
+
+	return ret;
+}
 void con_poll(void *pvParameters){
 	RingbufHandle_t rx_ring;
 	rmt_item32_t *rx_item;
@@ -217,7 +303,7 @@ void con_poll(void *pvParameters){
 		        gpio_set_level(13, 0);
 			} else {
 				new_state = n64_parse_resp(rx_item + 9, (rx_item_size / sizeof *rx_item) - 9, &state);
-				st.state = state;
+				st.state = state.raw;
 				st.ts = esp_timer_get_time();
 				controller_connected = true;
 		        gpio_set_level(13, 1);
