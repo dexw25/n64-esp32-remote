@@ -29,6 +29,10 @@ typedef struct {
 	int8_t joy_y : 8;
 } con_state;
 
+typedef struct {
+	con_state state;
+	int64_t ts;
+} state_packet;
 
 typedef enum {
 	CON_A,

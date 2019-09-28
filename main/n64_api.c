@@ -2,12 +2,13 @@
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/queue.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "driver/rmt.h"
 #include "driver/gpio.h"
 
-const char TAG[] = "CON_POLL";
+const static char TAG[] = "CON_POLL";
 
 // 0x01 is poll byte
 rmt_item32_t pollcmd[] = {
@@ -36,7 +37,7 @@ bool n64_parse_resp(rmt_item32_t *item, size_t num_items, con_state *con){
 
 	// Do not update state if we don't have enough packets. This also blocks buffer overflow
 	if (num_items < 32){
-		return;
+		return false;
 	}
 
 	// parse digital inputs, flasg state change if it happened
@@ -145,6 +146,9 @@ void con_poll(void *pvParameters){
 	RingbufHandle_t rx_ring;
 	rmt_item32_t *rx_item;
 	size_t rx_item_size;
+	QueueHandle_t mbuf = pvParameters;
+	assert(mbuf);
+	state_packet st;
 
 	// Timing params for poll loop
 	TickType_t now_ticks, last_wake_time = xTaskGetTickCount();
@@ -178,11 +182,11 @@ void con_poll(void *pvParameters){
 	rxconf.rx_config.filter_ticks_thresh = 60;
 	rxconf.rx_config.idle_threshold = 800;
 
-	ESP_LOGI(TAG, "TX init");
+	ESP_LOGD(TAG, "TX init");
 	ESP_ERROR_CHECK(rmt_config(&txconf));
 	ESP_ERROR_CHECK(rmt_driver_install(txconf.channel, 0, 0));
 
-	ESP_LOGI(TAG, "RX init");
+	ESP_LOGD(TAG, "RX init");
 	ESP_ERROR_CHECK(rmt_config(&rxconf));
 
 	ESP_ERROR_CHECK(rmt_driver_install(rxconf.channel, 1024, 0));
@@ -212,7 +216,9 @@ void con_poll(void *pvParameters){
 				controller_connected = false;
 		        gpio_set_level(13, 0);
 			} else {
-				n64_parse_resp(rx_item + 9, (rx_item_size / sizeof *rx_item) - 9, &state);
+				new_state = n64_parse_resp(rx_item + 9, (rx_item_size / sizeof *rx_item) - 9, &state);
+				st.state = state;
+				st.ts = esp_timer_get_time();
 				controller_connected = true;
 		        gpio_set_level(13, 1);
 			}
@@ -221,6 +227,13 @@ void con_poll(void *pvParameters){
 			ESP_LOGE(TAG, "Protocol error");
 			controller_connected = false;
 	        gpio_set_level(13, 0);
+		}
+
+		// Don't wait just drop the packet here if theres no room
+		// But only put it in the queue if something is new
+		if (new_state){
+			new_state = false;
+			xQueueOverwrite(mbuf, &st);
 		}
 
 		// Check timing against last wake time, and error if we overran the period
