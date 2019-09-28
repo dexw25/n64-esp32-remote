@@ -25,68 +25,86 @@ rmt_item32_t pollcmd[] = {
 
 // Static controller state var
 static con_state state;
+static bool controller_connected;
+static bool new_state;
 
-// Parse up to 42 items
-void n64_parse_resp(rmt_item32_t *item, size_t num_items, con_state *con){
+// Parse a controller status struct, 32 bits (any extras will be ignored)
+bool n64_parse_resp(rmt_item32_t *item, size_t num_items, con_state *con){
 	rmt_item32_t *first_item = item;
+	int8_t joy_new;
+	bool on;
 
 	// Do not update state if we don't have enough packets. This also blocks buffer overflow
-	if (num_items < 42){
+	if (num_items < 32){
 		return;
 	}
 
-	for (int i=0; i < 9; i++) item++; // seek cmd and cmd stop bit
-
-	// parse digital inputs
+	// parse digital inputs, flasg state change if it happened
 	for (int i = 0; i < 16; i++){
-		bool on = (item++)->duration0 < 100 ? true : false;
+		on = (item++)->duration0 < 100 ? true : false;
 		switch (i) {
 				case CON_A:
+					new_state |= on == con->a ? 0 : 1;
 					con->a = on;
 					break;
 				case CON_B:
+					new_state |= on == con->b ? 0 : 1;
 					con->b = on;
 					break;
 				case CON_Z:
+					new_state |= on == con->z ? 0 : 1;
 					con->z = on;
 					break;
 				case CON_START:
+					new_state |= on == con->start ? 0 : 1;
 					con->start = on;
 					break;
 				case CON_DU:
+					new_state |= on == con->d_up ? 0 : 1;
 					con->d_up = on;
 					break;
 				case CON_DD:
+					new_state |= on == con->d_down ? 0 : 1;
 					con->d_down = on;
 					break;
 				case CON_DL:
+					new_state |= on == con->d_left ? 0 : 1;
 					con ->d_left = on;
 					break;
 				case CON_DR:
+					new_state |= on == con->d_right ? 0 : 1;
 					con->d_right = on;
 					break;
 				case CON_RESET:
+					new_state |= on == con->reset ? 0 : 1;
 					con->reset = on;
 					break;
 				case CON_RESERVED:
+					new_state |= on == con->reserved ? 0 : 1;
 					con->reserved = on;
 					break;
 				case CON_L:
+					new_state |= on == con->l ? 0 : 1;
 					con->l = on;
 					break;
 				case CON_R:
+					new_state |= on == con->r ? 0 : 1;
 					con->r = on;
 					break;
 				case CON_CU:
+					new_state |= on == con->c_up ? 0 : 1;
 					con->c_up = on;
 					break;
 				case CON_CD:
+					new_state |= on == con->c_down ? 0 : 1;
 					con->c_down = on; 
 					break;
 				case CON_CL:
+					new_state |= on == con->c_left ? 0 : 1;
 					con->c_left = on;
 					break;
 				case CON_CR:
+					new_state |= on == con->c_right ? 0 : 1;
 					con->c_right = on;
 					break;
 				default:
@@ -95,20 +113,32 @@ void n64_parse_resp(rmt_item32_t *item, size_t num_items, con_state *con){
 	}
 
 	// Parse analog axes as 8 bit signed ints, MSB first
-	con->joy_x = 0;
+	joy_new = 0;
 	for (int i=7; i >= 0; i--) {
-		if (item->duration0 < 100) con->joy_x |= 1 << i;
+		if (item->duration0 < 100) joy_new |= 1 << i;
 		item++;
 	}
-	con->joy_y = 0;
+
+	if (joy_new != con->joy_x) {
+		new_state = true;
+		con->joy_x = joy_new;
+	}
+
+	joy_new = 0;
 	for (int i=7; i >= 0; i--) {
-		if (item->duration0 < 100) con->joy_y |= 1 << i;
+		if (item->duration0 < 100) joy_new |= 1 << i;
 		item++;
+	}
+
+	if (joy_new != con->joy_y) {
+		new_state = true;
+		con->joy_y = joy_new;
 	}
 
 	// Assert no buffer overflow condition occurred
-	assert((item - first_item) <= num_items);
+	assert((item - first_item) <= 32);
 
+	return new_state;
 }
 
 void con_poll(void *pvParameters){
@@ -176,13 +206,21 @@ void con_poll(void *pvParameters){
 
 		// If no items rx'ed do not attempt to parse anything
 		if (rx_item){
-			// Check enough items were rx'ed
+			// Check enough items were rx'ed (32 for state, 9 for our cmd and 1 stop bit)
 			if (rx_item_size < 42){
-				ESP_LOGE(TAG, "got %d items, expected at least 42", rx_item_size / sizeof *rx_item);
+				// Not an error condition, this means controller disconnected. turn off activity light
+				controller_connected = false;
+		        gpio_set_level(13, 0);
 			} else {
-				n64_parse_resp(rx_item, rx_item_size / sizeof *rx_item, &state);
+				n64_parse_resp(rx_item + 9, (rx_item_size / sizeof *rx_item) - 9, &state);
+				controller_connected = true;
+		        gpio_set_level(13, 1);
 			}
 			vRingbufferReturnItem(rx_ring, rx_item);
+		} else {
+			ESP_LOGE(TAG, "Protocol error");
+			controller_connected = false;
+	        gpio_set_level(13, 0);
 		}
 
 		// Check timing against last wake time, and error if we overran the period
