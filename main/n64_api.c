@@ -3,12 +3,13 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "driver/rmt.h"
 #include "driver/gpio.h"
 
 const char TAG[] = "CON_POLL";
 
-// 0x00 is poll byte
+// 0x01 is poll byte
 rmt_item32_t pollcmd[] = {
 	ITEM_ZERO, 
 	ITEM_ZERO, 
@@ -116,8 +117,8 @@ void con_poll(void *pvParameters){
 	size_t rx_item_size;
 
 	// Timing params for poll loop
-	TickType_t now, last_wake_time = xTaskGetTickCount();
-	// 60hz-ish
+	TickType_t now_ticks, last_wake_time = xTaskGetTickCount();
+	// 60hz (tick rate must be a multiple of 60, 120 recommended)
 	const TickType_t poll_period = (1000/60) / portTICK_PERIOD_MS;
 
 	ESP_LOGI(TAG, "Starting controller driver init");
@@ -166,9 +167,12 @@ void con_poll(void *pvParameters){
 		rmt_write_items(txconf.channel, pollcmd, sizeof pollcmd / sizeof pollcmd[0], false);
 
 		// Controller response will be concatenated with our command if present
-		//  No delay here, write_items starts TX fast enough that the ring buffer is locked by rx before this call
-		//  
-		rx_item = xRingbufferReceive(rx_ring, &rx_item_size, 0);
+		//  Wait a tick to allow bytes to come in, if not then this frame of state
+		//  +is delayed to the next poll and this is not desirable
+		//  +Desired period is about 16 ms, one tick is 10 ms. This sicks but is better than 16. 
+		//  Actual delay is much less because rmt_rx wakes us up
+		// This is fine, latency with a response packet is 212 us (so small, so fast)
+		rx_item = xRingbufferReceive(rx_ring, &rx_item_size, 1);
 
 		// If no items rx'ed do not attempt to parse anything
 		if (rx_item){
@@ -182,10 +186,10 @@ void con_poll(void *pvParameters){
 		}
 
 		// Check timing against last wake time, and error if we overran the period
-		now = xTaskGetTickCount();
-		if ((now - last_wake_time) > poll_period){
-			// Overran our schedule, update last_wake_time to now, otherwise the next poll happens immediately and the controller may not like that
-			last_wake_time = now;
+		now_ticks = xTaskGetTickCount();
+		if ((now_ticks - last_wake_time) > poll_period){
+			// Overran our schedule, update last_wake_time to now_ticks, otherwise the next poll happens immediately and the controller may not like that
+			last_wake_time = now_ticks;
 		}
 
 		// Ensure 60hz(ish) period
