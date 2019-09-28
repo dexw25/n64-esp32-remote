@@ -30,6 +30,7 @@ typedef union {
 		int8_t joy_y : 8;
 	};
 	uint32_t raw;
+	uint8_t bytes[4];
 } con_state;
 
 typedef struct {
@@ -55,6 +56,17 @@ typedef enum {
 	CON_CL,
 	CON_CR
 } button_enums;
+
+// APB frequency from which to derive RMT filter and decoding params
+#define APB_FREQ 80 * 1000 * 1000 
+
+// TX params to ensure 1MHZ period/1us per item
+#define TX_TARGET_FREQ 1 * 1000 * 1000
+#define TX_DIV (APB_FREQ / (TX_TARGET_FREQ))
+
+// RX params
+#define RX_TARGET_FREQ 80 * 1000 * 1000
+#define RX_DIV ((APB_FREQ) / (RX_TARGET_FREQ))
 
 // Macros to ease generation of RMT items
 // zero is 3us low, one us high, one is reverse (timing only, not level)
