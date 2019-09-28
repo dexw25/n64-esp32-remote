@@ -228,6 +228,32 @@ int parse_cmd(rmt_item32_t *item, size_t num_items){
 
 	return ret;
 }
+
+rmt_item32_t *reply_to_cmd(int cmd, size_t *num_items){
+	rmt_item32_t *ret = NULL;
+	switch (cmd){
+		case 0x00:
+		// Poll cmd, reply 0x05, 0x00, (0x01 for controller pack, 0x02 for no pack, 0x04 if CRC error)
+		// 24 bits (3x8) of data plus stop bit and RMT end
+			ret = malloc(sizeof(rmt_item32_t) * 26);
+			if (ret) {
+				uint8_t msg[] = {
+					0x05,
+					0x00,
+					0x01
+				};
+
+				// No assertion here, add one if bugs pop up
+				n64_pack_buf(ret, 26, msg, sizeof msg);
+			}
+			break;
+		default:
+		// Do not set ret
+			break;
+	}
+	return ret;
+}
+
 void con_poll(void *pvParameters){
 	RingbufHandle_t rx_ring;
 	rmt_item32_t *rx_item;
@@ -333,4 +359,86 @@ void con_poll(void *pvParameters){
 		vTaskDelayUntil(&last_wake_time, poll_period);
 	}
 	// send state (maybe just state changes?) to MQTT(?) endpoint (or print to serial debug for now)
+}
+
+void con_send(void *params) {
+	QueueHandle_t mbuf = params;
+	state_packet pkt;
+	RingbufHandle_t rx_ring;
+	uint8_t cmd;
+	assert(mbuf);
+	rmt_item32_t *rx_item, *tx_item;
+	size_t tx_item_len, rx_item_size;
+	size_t resp_bits_sent = 0;
+
+	//Init RMT TX channel
+	rmt_config_t txconf, rxconf;
+	txconf.rmt_mode = RMT_MODE_TX;
+	txconf.gpio_num = N64_GPIO;
+	txconf.mem_block_num = 1;
+	txconf.clk_div = 80; // APB is 80Mhz so this makes for a 1us period
+	txconf.channel = 0;
+
+	txconf.tx_config.loop_en = 0;
+	txconf.tx_config.carrier_en = 0;
+	txconf.tx_config.idle_output_en = 0;
+	txconf.tx_config.idle_level = 1;
+
+	//Init RMT rx channel (simultaneous operation possible on same pin?)
+	rxconf.rmt_mode = RMT_MODE_RX;
+	// rxconf.gpio_num = N64_GPIO;
+	rxconf.gpio_num = 14;
+	rxconf.mem_block_num = 1;
+	rxconf.clk_div = 1; // APB is 80Mhz, don't divide on rx to get more resolution
+	rxconf.channel = 1;
+
+	rxconf.rx_config.filter_en = 1;
+	rxconf.rx_config.filter_ticks_thresh = 60;
+	rxconf.rx_config.idle_threshold = 800;
+
+	ESP_LOGD(TAG, "TX init");
+	ESP_ERROR_CHECK(rmt_config(&txconf));
+	ESP_ERROR_CHECK(rmt_driver_install(txconf.channel, 0, 0));
+
+	ESP_LOGD(TAG, "RX init");
+	ESP_ERROR_CHECK(rmt_config(&rxconf));
+
+	ESP_ERROR_CHECK(rmt_driver_install(rxconf.channel, 1024, 0));
+
+	ESP_ERROR_CHECK(rmt_get_ringbuf_handle(rxconf.channel, &rx_ring));
+
+	// Start RX, never stops as long as this task is running
+	ESP_ERROR_CHECK(rmt_rx_start(rxconf.channel, true));
+
+	// suspend until first packet is in
+	xQueueReceive(mbuf, &pkt, portMAX_DELAY);
+
+	while(1){
+		// Update state if update is available
+		xQueueReceive(mbuf, &pkt, 0);
+
+		// Receive console cmd, suspend until there is something to respond to
+		rx_item = xRingbufferReceive(rx_ring, &rx_item_size, portMAX_DELAY);
+
+		if (rx_item) {
+			// Decode command byte (handle extra bytes? TODO)
+			cmd = parse_cmd(rx_item + resp_bits_sent, (rx_item_size / sizeof *rx_item) - resp_bits_sent);
+			vRingbufferReturnItem(rx_ring, rx_item);
+
+			// reply_to_cmd will build a reply and return an item list (dynamically allocated)
+			tx_item = reply_to_cmd(cmd, &tx_item_len);
+
+			// tx_item will be null if no response is expected or if there was a memory error
+			if (tx_item) {
+				// Do not RX our response
+				rmt_rx_stop(rxconf.channel);
+
+				// Must wait to avoid use-after-free error
+				rmt_write_items(txconf.channel, pollcmd, sizeof pollcmd / sizeof pollcmd[0], true);
+				free(tx_item);
+
+				rmt_rx_start(rxconf.channel, true);
+			}
+		}
+	}
 }

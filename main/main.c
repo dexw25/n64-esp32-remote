@@ -44,21 +44,18 @@ void app_main(void)
         "controller_poll",
         4096,
         sbuf, // no params
+        2,
+        NULL); // Do not save task handle//*/
+
+    // start controller poll task
+    xTaskCreate(
+        con_send,
+        "controller_send",
+        4096,
+        sbuf, // no params
         1,
         NULL); // Do not save task handle//*/
 
-    // TEST: see controller values and metadata
-        state_packet pkt;
-        int64_t then=0, now;
-        while(1){
-            xQueueReceive(sbuf, &pkt, portMAX_DELAY);
-            now = esp_timer_get_time();
-            ESP_LOGI(TAG, "Time since last packet: %lldus, Time since this packet: %lldus", pkt.ts - then, now - pkt.ts);
-            then = pkt.ts;
-        }
-
     // Suspend main task
-    while(1){
-      vTaskDelay(portMAX_DELAY);
-    }
+    vTaskDelay(portMAX_DELAY);
 }

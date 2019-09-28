@@ -71,4 +71,7 @@ typedef enum {
 // Start this task to commence polling of N64 controller
 void con_poll(void*);
 
+// Start this to send states out on IR peripheral
+void con_send(void*);
+
 #endif
